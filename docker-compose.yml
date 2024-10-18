@@ -1,0 +1,27 @@
+version: '3.4'
+
+services:
+  genai.server:
+    image: ${DOCKER_REGISTRY-}genaiserver:0.0.3
+    build:
+      context: GenAI.Server
+      dockerfile: Dockerfile
+    volumes:
+      - models_volume:/models
+    ports:
+      - "8080:8080"  # Map port 8080 on the host to port 8080 in the container
+#   runtime: nvidia  # Add NVIDIA runtime for GPU support
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all # Use all GPUs; specify a specific GPU ID if necessary
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,gpu # Required NVIDIA capabilities
+      - Models__BasePath=/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [compute,utility,gpu]
+
+volumes:
+  models_volume:

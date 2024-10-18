@@ -12,4 +12,4 @@ Includes a Jinja port from HF Jinja JS so the chat prompt template is taken from
 
 Includes a minimal API implementation with /models and chat/completions endpoints, not auth yet
 
-If this sparks some interest I may document it more.
+If this sparks some interest - I may improve it, documentation and functionality wise.

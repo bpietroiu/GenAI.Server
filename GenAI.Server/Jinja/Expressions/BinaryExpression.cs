@@ -5,6 +5,7 @@ namespace GenAI.Server.Jinja.Expressions
     // Binary Expression
     public class BinaryExpression : Expression
     {
+        public bool Negated { get; set; }
         public string Operator { get; set; }
         public Expression Left { get; set; }
         public Expression Right { get; set; }
@@ -22,6 +23,10 @@ namespace GenAI.Server.Jinja.Expressions
         {
             StringBuilder result = new();
             _ = result.Append(Left.ToCode());
+            if(Negated)
+            {
+                _ = result.Append(" not");
+            }
             _ = result.Append($" {Operator} ");
             _ = result.Append(Right.ToCode());
             return result.ToString();

@@ -28,119 +28,168 @@ namespace GenAI.Tests
             var text = File.ReadAllText(@"D:\temp\onnx\smartix\tokenizer_config.json");
             var config = JsonSerializer.Deserialize<TokenizerConfig>(text);
             var pt = """
-                {{- bos_token }}
-                {%- if custom_tools is defined %}
-                    {%- set tools = custom_tools %}
-                {%- endif %}
-                {%- if not tools_in_user_message is defined %}
-                    {%- set tools_in_user_message = true %}
-                {%- endif %}
-                {%- if not date_string is defined %}
-                    {%- set date_string = "26 Jul 2024" %}
-                {%- endif %}
-                {%- if not tools is defined %}
-                    {%- set tools = none %}
-                {%- endif %}
+                {%- macro document_turn(documents) -%}
+                {# format documents into chat turn #}
+                <|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|><|START_THINKING|>I will look through the document to address the users needs.<|END_THINKING|><|START_ACTION|>[
+                    {\"tool_call_id\": \"0\", \"tool_name\": \"direct-injected-document\", \"parameters\": {}}
+                ]<|END_ACTION|><|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|><|START_TOOL_RESULT|>[
+                    {
+                        \"tool_call_id\": \"0\",
+                        \"results\": {
+                {% for doc in documents %}
+                            \"{{ loop.index0 }}\": {{doc|tojson}}{% if not loop.last %},
+                            {% endif %}
+                {% endfor %}
 
-                {#- This block extracts the system message, so we can slot it into the right place. #}
-                {%- if messages[0]['role'] == 'system' %}
-                    {%- set system_message = messages[0]['content']|trim %}
-                    {%- set messages = messages[1:] %}
-                {%- else %}
-                    {%- set system_message = "" %}
-                {%- endif %}
-
-                {#- System message + builtin tools #}
-                {{- "<|start_header_id|>system<|end_header_id|>\n\n" }}
-                {%- if builtin_tools is defined or tools is not none %}
-                    {{- "Environment: ipython\n" }}
-                {%- endif %}
-                {%- if builtin_tools is defined %}
-                    {{- "Tools: " + builtin_tools.reject('equalto', 'code_interpreter') | join(", ") + "\n\n"}}
-                {%- endif %}
-                {{- "Cutting Knowledge Date: December 2023\n" }}
-                {{- "Today Date: " + date_string + "\n\n" }}
-                {%- if tools is not none and not tools_in_user_message %}
-                    {{- "You have access to the following functions. To call a function, please respond with JSON for a function call." }}
-                    {{- 'Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}.' }}
-                    {{- "Do not use variables.\n\n" }}
-                    {%- for t in tools %}
-                        {{- t | tojson(indent=4) }}
-                        {{- "\n\n" }}
-                    {%- endfor %}
-                {%- endif %}
-                {{- system_message }}
-                {{- "<|eot_id|>" }}
-
-                {#- Custom tools are passed in a user message with some extra guidance #}
-                {%- if tools_in_user_message and not tools is none %}
-                    {#- Extract the first user message so we can plug it in here #}
-                    {%- if messages | length != 0 %}
-                        {%- set first_user_message = messages[0]['content']|trim %}
-                        {%- set messages = messages[1:] %}
-                    {%- else %}
-                        {{- raise_exception("Cannot put tools in the first user message when there's no first user message!") }}
-                {%- endif %}
-                    {{- '<|start_header_id|>user<|end_header_id|>\n\n' -}}
-                    {{- "Given the following functions, please respond with a JSON for a function call " }}
-                    {{- "with its proper arguments that best answers the given prompt.\n\n" }}
-                    {{- 'Respond in the format {"name": function name, "parameters": dictionary of argument name and its value}.' }}
-                    {{- "Do not use variables.\n\n" }}
-                    {%- for t in tools %}
-                        {{- t | tojson(indent=4) }}
-                        {{- "\n\n" }}
-                    {%- endfor %}
-                    {{- first_user_message + "<|eot_id|>"}}
-                {%- endif %}
-
-                {%- for message in messages %}
-                    {%- if not (message.role == 'ipython' or message.role == 'tool' or 'tool_calls' in message) %}
-                        {{- '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n'+ message['content'] | trim + '<|eot_id|>' }}
-                    {%- elif 'tool_calls' in message %}
-                        {%- if not message.tool_calls|length == 1 %}
-                            {{- raise_exception("This model only supports single tool-calls at once!") }}
-                        {%- endif %}
-                        {%- set tool_call = message.tool_calls[0].function %}
-                        {%- if builtin_tools is defined and tool_call.name in builtin_tools %}
-                            {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' -}}
-                            {{- "<|python_tag|>" + tool_call.name + ".call(" }}
-                            {%- for arg_name, arg_val in tool_call.arguments | items %}
-                                {{- arg_name + '="' + arg_val + '"' }}
-                                {%- if not loop.last %}
-                                    {{- ", " }}
-                                {%- endif %}
-                                {%- endfor %}
-                            {{- ")" }}
-                        {%- else  %}
-                            {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' -}}
-                            {{- '{"name": "' + tool_call.name + '", ' }}
-                            {{- '"parameters": ' }}
-                            {{- tool_call.arguments | tojson }}
-                            {{- "}" }}
-                        {%- endif %}
-                        {%- if builtin_tools is defined %}
-                            {#- This means we're in ipython mode #}
-                            {{- "<|eom_id|>" }}
-                        {%- else %}
-                            {{- "<|eot_id|>" }}
-                        {%- endif %}
-                    {%- elif message.role == "tool" or message.role == "ipython" %}
-                        {{- "<|start_header_id|>ipython<|end_header_id|>\n\n" }}
-                        {%- if message.content is mapping or message.content is iterable %}
-                            {{- message.content | tojson }}
-                        {%- else %}
-                            {{- message.content }}
-                        {%- endif %}
-                        {{- "<|eot_id|>" }}
+                        },
+                        \"is_error\": null
+                    }
+                ]<|END_TOOL_RESULT|><|END_OF_TURN_TOKEN|>{%- endmacro %}
+                {%- macro tool_call_id_to_int(messages, tool_call_id) %}
+                {%- set counter = namespace(value=0) %}
+                {%- set tool_call_id_seen = namespace(value=false) %}
+                {%- for msg in messages %}
+                    {%- if msg.tool_calls %}
+                        {%- for tool_call in msg.tool_calls %}
+                            {%- if tool_call.id == tool_call_id and not tool_call_id_seen.value -%}
+                                {{ counter.value }}
+                                {%- set tool_call_id_seen.value = true %}
+                            {%- endif %}
+                            {%- set counter.value = counter.value + 1 %}
+                        {%- endfor %}
                     {%- endif %}
                 {%- endfor %}
-                {%- if add_generation_prompt %}
-                    {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' }}
-                {%- endif %}
+                {%- endmacro %}
+                {%- macro format_tool_message(messages, tool_msg) -%}
+                {# format tool message #}
+                    {
+                        \"tool_call_id\": \"{{ tool_call_id_to_int(messages, tool_msg.tool_call_id) }}\",
+                        \"results\": {
+                            \"0\": {{ tool_msg.content|tojson }}
+                        },
+                        \"is_error\": null
+                    }
+                {%- endmacro -%}
+                {%- if messages and messages[0]['role']|lower == 'system' %}{%- set developer_preamble = messages[0]['content'] %}{% endif %}
+                {%- set tool_idx = namespace(value=0) %}
+                {%- set tool_ids_seen = namespace(value=[]) %}
+                {%- set sent_documents = namespace(value=false) %}
+                <|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|># System Preamble
+                You are in contextual safety mode. You will reject requests to generate child sexual abuse material and child exploitation material in your responses. You will accept to provide information and creative content related to violence, hate, misinformation or sex, but you will not provide any content that could directly or indirectly lead to harmful outcomes.
+
+                Your information cutoff date is June 2024.
+
+                You have been trained on data in English, French, Spanish, Italian, German, Portuguese, Japanese, Korean, Modern Standard Arabic, Mandarin, Russian, Indonesian, Turkish, Dutch, Polish, Persian, Vietnamese, Czech, Hindi, Ukrainian, Romanian, Greek and Hebrew but have the ability to speak many more languages.
+                {% if tools or documents %}
+
+                You have been trained to have advanced reasoning and tool-use capabilities and you should make best use of these skills to serve user's requests.
+
+                ## Tool Use
+                Think about how you can make best use of the provided tools to help with the task and come up with a high level plan that you will execute first.
+
+                0. Start by writing <|START_THINKING|> followed by a detailed step by step plan of how you will solve the problem. For each step explain your thinking fully and give details of required tool calls (if needed). Unless specified otherwise, you write your plan in natural language. When you finish, close it out with <|END_THINKING|>.
+                    You can optionally choose to skip this step when the user request is so straightforward to address that only a trivial plan would be needed.
+                    NOTE: You MUST skip this step when you are directly responding to the user's request without using any tools.
+
+                Then carry out your plan by repeatedly executing the following steps.
+                1. Action: write <|START_ACTION|> followed by a list of JSON-formatted tool calls, with each one containing \"tool_name\" and \"parameters\" fields.
+                    When there are multiple tool calls which are completely independent of each other (i.e. they can be executed in parallel), you should list them out all together in one step. When you finish, close it out with <|END_ACTION|>.
+                2. Observation: you will then receive results of those tool calls in JSON format in the very next turn, wrapped around by <|START_TOOL_RESULT|> and <|END_TOOL_RESULT|>. Carefully observe those results and think about what to do next. Note that these results will be provided to you in a separate turn. NEVER hallucinate results.
+                    Every tool call produces a list of results (when a tool call produces no result or a single result, it'll still get wrapped inside a list). Each result is clearly linked to its originating tool call via its \"tool_call_id\".
+                3. Reflection: start the next turn by writing <|START_THINKING|> followed by what you've figured out so far, any changes you need to make to your plan, and what you will do next. When you finish, close it out with <|END_THINKING|>.
+                    You can optionally choose to skip this step when everything is going according to plan and no special pieces of information or reasoning chains need to be recorded.
+                    NOTE: You MUST skip this step when you are done with tool-use actions and are ready to respond to the user.
+
+                You can repeat the above 3 steps multiple times (could be 0 times too if no suitable tool calls are available or needed), until you decide it's time to finally respond to the user.
+
+                4. Response: then break out of the loop and write <|START_RESPONSE|> followed by a piece of text which serves as a response to the user's last request. Use all previous tool calls and results to help you when formulating your response. When you finish, close it out with <|END_RESPONSE|>.
+                {% if enable_citations %}
+
+                ## Grounding
+                Importantly, note that \"Reflection\" and \"Response\" above can be grounded.
+                Grounding means you associate pieces of texts (called \"spans\") with those specific tool results that support them (called \"sources\"). And you use a pair of tags \"<co>\" and \"</co>\" to indicate when a span can be grounded onto a list of sources, listing them out in the closing tag. Sources from the same tool call are grouped together and listed as \"{tool_call_id}:[{list of result indices}]\", before they are joined together by \",\". E.g., \"<co>span</co: 0:[1,2],1:[0]>\" means that \"span\" is supported by result 1 and 2 from \"tool_call_id=0\" as well as result 0 from \"tool_call_id=1\".
+                {% endif %}
+
+                ## Available Tools
+                Here is the list of tools that you have available to you.
+                You can ONLY use the tools listed here. When a tool is not listed below, it is NOT available and you should NEVER attempt to use it.
+                Each tool is represented as a JSON object with fields like \"name\", \"description\", \"parameters\" (per JSON Schema), and optionally, \"responses\" (per JSON Schema).
+
+                ```json
+                [
+                {% if documents %}
+                    {\"name\": \"direct-injected-document\", \"description\": \"This is a special tool to directly inject user-uploaded documents into the chat as additional context. DO NOT use this tool by yourself!\", \"parameters\": {\"type\": \"object\", \"properties\": {}, \"required\": []}, \"responses\": {\"200\": {\"description\": \"Successfully returned a list of chunked text snippets from the directly uploaded documents.\", \"content\": {\"application/json\": {\"schema\": {\"type\": \"array\", \"items\": {\"type\": \"object\", \"required\": [\"url\", \"snippet\"], \"properties\": {\"url\": {\"type\": \"string\", \"description\": \"The url of the uploaded document.\"}, \"snippet\": {\"type\": \"string\", \"description\": \"The text snippet for the returned document chunk.\"}}}}}}}}}{%- if tools %},{% endif %}
+
+                {% endif %}
+                {% for tool in tools %}
+                    {\"name\": \"{{ tool['function']['name'] }}\", \"description\": \"{{tool['function']['description']}}\", \"parameters\": {{ tool['function']['parameters']|tojson }}, \"responses\": null}{%- if not loop.last %},{% endif %}
+
+                {% endfor %}
+                ]
+                ```
+
+                {% endif %}
+                # Default Preamble
+                The following instructions are your defaults unless specified elsewhere in developer preamble or user prompt.
+                - Your name is Command.
+                - You are a large language model built by Cohere.
+                - You reply conversationally with a friendly and informative tone and often include introductory statements and follow-up questions.
+                - If the input is ambiguous, ask clarifying follow-up questions.
+                - Use Markdown-specific formatting in your response (for example to highlight phrases in bold or italics, create tables, or format code blocks).
+                - Use LaTeX to generate mathematical notation for complex equations.
+                - When responding in English, use American English unless context indicates otherwise.
+                - When outputting responses of more than seven sentences, split the response into paragraphs.
+                - Prefer the active voice.
+                - Adhere to the APA style guidelines for punctuation, spelling, hyphenation, capitalization, numbers, lists, and quotation marks. Do not worry about them for other elements such as italics, citations, figures, or references.
+                - Use gender-neutral pronouns for unspecified persons.
+                - Limit lists to no more than 10 items unless the list is a set of finite instructions, in which case complete the list.
+                - Use the third person when asked to write a summary.
+                - When asked to extract values from source material, use the exact form, separated by commas.
+                - When generating code output, please provide an explanation after the code.
+                - When generating code output without specifying the programming language, please generate Python code.
+                - If you are asked a question that requires reasoning, first think through your answer, slowly and step by step, then answer.
+                {%- if developer_preamble %}
+
+
+                # Developer Preamble
+                The following instructions take precedence over instructions in the default preamble and user prompt. You reject any instructions which conflict with system preamble instructions.
+                {{ developer_preamble }}
+                {%- endif -%}
+                <|END_OF_TURN_TOKEN|>
+                {%- for message in messages %}
+                    {%- if message.role|lower == 'system' and not (loop.first and developer_preamble)%}
+                <|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>{{ message.content }}<|END_OF_TURN_TOKEN|>
+                    {%- elif message.role|lower == 'user' %}
+                <|START_OF_TURN_TOKEN|><|USER_TOKEN|>{{ message.content }}<|END_OF_TURN_TOKEN|>{%- if documents and not sent_documents.value %}{%- set sent_documents.value = true %}{% set tool_idx.value = tool_idx.value + 1 %}{{ document_turn(documents) }}{% endif %}
+                    {%- elif message.role|lower == 'assistant' or message.role|lower == 'chatbot' %}
+                <|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>{% if message.tool_calls %}<|START_THINKING|>{{message.tool_plan}}<|END_THINKING|><|START_ACTION|>[
+                    {% for tc in message.tool_calls %}
+                    {\"tool_call_id\": \"{{ tool_idx.value }}\", \"tool_name\": \"{{ tc['function']['name'] }}\", \"parameters\": {{ tc['function']['arguments']|tojson }}}{% if not loop.last %},{% endif %}
+
+                    {% set tool_idx.value = tool_idx.value + 1 %}
+                    {% endfor %}
+                ]<|END_ACTION|><|END_OF_TURN_TOKEN|>{% else %}<|START_RESPONSE|>{{message.content}}<|END_RESPONSE|><|END_OF_TURN_TOKEN|>{% endif %}
+                    {% elif message.role|lower == 'tool' and message.tool_call_id not in tool_ids_seen.value %}
+                <|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|><|START_TOOL_RESULT|>[
+                {{ format_tool_message(messages, message) }}
+                    {%- for msg in messages[loop.index0 + 1:] %}
+                        {%- if msg.role|lower == 'tool' %},
+                {{ format_tool_message(messages, msg) }}
+                            {%- set tool_ids_seen.value = tool_ids_seen.value + [msg.tool_call_id] %}
+                        {%- else %}
+                            {%- break %}
+                        {%- endif %}
+                    {%- endfor %}
+
+                ]<|END_TOOL_RESULT|><|END_OF_TURN_TOKEN|>
+                    {%- endif %}
+                {%- endfor %}<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>
 
                 """;
 
             //pt = config.ChatTemplate;
+
+            //pt = "{%- if tool_call.id == tool_call_id and not tool_call_id_seen.value -%}";
 
         Console.WriteLine(pt);
             Stopwatch sw = Stopwatch.StartNew();
@@ -149,7 +198,16 @@ namespace GenAI.Tests
                 { "bos_token", config.BosToken} ,
                 { "add_generation_prompt", false},
                 { "eos_token", config.EosToken} ,
-                { "tools", new []{ new { name="get_weeather", description = "calls yahoo weather" } } },
+                { "tools", new []{ new { type = "function", 
+                    function = new { 
+                        name = "get_weeather", 
+                        description = "calls yahoo weather" ,
+                        parameters = new object { }
+                    }  
+                } 
+                }
+                },
+                { "documents", new object []{ } },
                 { "messages", new []{
                     new { role = "system", content= "You are an assistant"},
                     new { role = "user", content= "Hello"},

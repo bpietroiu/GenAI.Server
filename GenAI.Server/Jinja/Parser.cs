@@ -99,6 +99,11 @@ namespace GenAI.Server.Jinja
                     _ = Expect(TokenTypes.EndFor, "Expected endfor token");
                     _ = Expect(TokenTypes.CloseStatement, "Expected %} token");
                     break;
+                case TokenTypes.Break:
+                    _currentTokenIndex++;
+                    result = new BreakStatement(); // Add a new class for `BreakStatement`
+                    _ = Expect(TokenTypes.CloseStatement, "Expected closing statement token");
+                    break;
                 default:
                     throw new SyntaxError($"Unknown statement type: {_tokens[_currentTokenIndex].Type}");
             }
@@ -134,8 +139,11 @@ namespace GenAI.Server.Jinja
             List<Statement> body = new();
             List<Statement> alternate = new();
 
-            while (!Is(TokenTypes.OpenStatement, TokenTypes.ElseIf) && !Is(TokenTypes.OpenStatement, TokenTypes.Else) && !Is(TokenTypes.OpenStatement, TokenTypes.EndIf))
+            while (!Is(TokenTypes.OpenStatement, TokenTypes.ElseIf) 
+                && !Is(TokenTypes.OpenStatement, TokenTypes.Else)
+                && !Is(TokenTypes.OpenStatement, TokenTypes.EndIf) && _tokens.Count > _currentTokenIndex)
             {
+
                 body.Add(ParseAny());
             }
 
@@ -341,12 +349,27 @@ namespace GenAI.Server.Jinja
         {
             Expression left = ParseTestExpression();
 
-            while (Is(TokenTypes.ComparisonBinaryOperator) || Is(TokenTypes.In))
+            while (true)
             {
-                Token operatorToken = _tokens[_currentTokenIndex];
-                _currentTokenIndex++;
-                Expression right = ParseTestExpression();
-                left = new BinaryExpression(operatorToken.Value, left, right);
+                if (Is(TokenTypes.ComparisonBinaryOperator) || Is(TokenTypes.In))
+                {
+                    // Handle "in"
+                    Token operatorToken = _tokens[_currentTokenIndex++];
+                    Expression right = ParseTestExpression();
+                    left = new BinaryExpression(operatorToken.Value, left, right);
+                }
+                else if (_currentTokenIndex + 1 < _tokens.Count && _tokens[_currentTokenIndex].Type == TokenTypes.Not && _tokens[_currentTokenIndex + 1].Type == TokenTypes.In)
+                {
+                    // Handle "not in" explicitly
+                    _currentTokenIndex++; // Move past "not"
+                    Token operatorToken = _tokens[_currentTokenIndex++]; // Move past "in"
+                    Expression right = ParseTestExpression();
+                    left = new BinaryExpression(operatorToken.Value, left, right) { Negated = true };
+                }
+                else
+                {
+                    break; // No more comparisons
+                }
             }
 
             return left;

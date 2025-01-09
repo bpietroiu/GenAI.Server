@@ -1,4 +1,6 @@
-﻿using System.Linq.Expressions;
+﻿using System.Collections;
+using System.Linq.Expressions;
+using System.Linq;
 using System.Text;
 using GenAI.Server.Jinja.Expressions;
 using GenAI.Server.Jinja.Runtime;
@@ -44,6 +46,16 @@ namespace GenAI.Server.Jinja
                     return EvaluateCallExpression(callExpression, env);
                 case MemberExpression memberExpression:
                     return EvaluateMemberExpression(memberExpression, env);
+                case ArrayLiteral arrayLiteral:
+                    { 
+                        List<RuntimeValue> values = new();
+                        foreach (var item in (IEnumerable)arrayLiteral.Value)
+                        {
+                            //values.Add(EvaluateLiteral(item, env));
+                        }
+                        return new ArrayValue(values.ToArray());
+                    }
+                    break;
                 case LiteralExpression literal:
                     return EvaluateLiteral(literal, env);
                 case IfStatement ifStatement:
@@ -64,10 +76,37 @@ namespace GenAI.Server.Jinja
                     return EvaluateFilterExpression(filterExpression, env);
                 case KeywordArgumentExpression keywordArgumentExpression:
                     return new ArgumentValue(keywordArgumentExpression.Key.Value, Evaluate(keywordArgumentExpression.Value, env));
-
+                case MacroStatement macroStatement:
+                    {
+                        EvaluateMacroStatement(macroStatement, env);
+                        return new NullValue();
+                    }
+                    break;
                 default:
-                    throw new Exception($"Unknown statement type: {statement.GetType().Name}");
+                    throw new Exception($"Unknown statement type: {statement.GetType().Name} [{statement.ToCode()}]");
             }
+        }
+
+        private void EvaluateMacroStatement(MacroStatement macroStatement, Environment env)
+        {
+            var name = ((IdentifierExpression)macroStatement.Name).Value;
+            var args = macroStatement.Args.Select(arg => ((IdentifierExpression)arg).Value).ToList();
+
+            env.Set(name, new FunctionValue((v, e) =>
+            {
+                //var macroEnv = e.CreateChildEnvironment();
+                //foreach (var vv in env.Variables)
+                //{
+                //    macroEnv.Set(vv.Key, vv.Value);
+                //}
+
+                //for (int i = 0; i < args.Count; i++)
+                //{
+                //    macroEnv.Set(args[i], v[i]);
+                //}
+                return EvaluateBlock(macroStatement.Body, env);
+            }));
+
         }
 
         private RuntimeValue EvaluateFilterExpression(FilterExpression node, Environment env)
@@ -384,7 +423,6 @@ namespace GenAI.Server.Jinja
             return result.ToString();
         }
 
-
         private RuntimeValue EvaluateBinaryExpression(BinaryExpression binaryExpression, Environment env)
         {
             var left = Evaluate(binaryExpression.Left, env);
@@ -396,6 +434,25 @@ namespace GenAI.Server.Jinja
             {
                 case "in":
                     {
+                        {
+                            if (right is ArrayValue arrayValue)
+                            {
+                                bool result = false;
+                                foreach (RuntimeValue rv in ((IEnumerable)arrayValue.Value))
+                                {
+                                    if (rv.Value.Equals(left.Value))
+                                    {
+                                        result = true;
+                                        break;
+                                    }
+                                }
+                                if (binaryExpression.Negated)
+                                    return new BooleanValue(!result);
+                                return new BooleanValue(result);
+
+                            }
+                        }
+
                         {
                             if (left is StringValue leftBool && right is StringValue rightBool)
                             {
@@ -420,6 +477,9 @@ namespace GenAI.Server.Jinja
                 case "or":
                 case "||":
                     {
+                        left = CoerceBooleanValue(left);
+                        right = CoerceBooleanValue(right);
+
                         if (left is BooleanValue leftBool && right is BooleanValue rightBool)
                         {
                             return new BooleanValue((bool)leftBool.Value || (bool)rightBool.Value);
@@ -429,6 +489,9 @@ namespace GenAI.Server.Jinja
                 case "and":
                 case "&&":
                     {
+                        left = CoerceBooleanValue(left);
+                        right = CoerceBooleanValue(right);
+
                         if (left is BooleanValue leftBool && right is BooleanValue rightBool)
                         {
                             return new BooleanValue((bool)leftBool.Value && (bool)rightBool.Value);
@@ -470,6 +533,23 @@ namespace GenAI.Server.Jinja
             }
 
             throw new Exception($"Invalid binary expression evaluation. {binaryExpression.ToCode()} left is {left} right is {right}");
+        }
+
+        private RuntimeValue CoerceBooleanValue(RuntimeValue left)
+        {
+            switch (left)
+            {
+                case ArrayValue a:
+                    return new BooleanValue((a.Value as Array).Length > 0);
+                case BooleanValue b:
+                    return b;
+                case NullValue _:
+                    return new BooleanValue(false);
+                case UndefinedValue _:
+                    return new BooleanValue(false);
+                default:
+                    return new BooleanValue(true);
+            }
         }
     }
 }

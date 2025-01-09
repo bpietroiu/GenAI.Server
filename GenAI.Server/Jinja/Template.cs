@@ -29,6 +29,7 @@ namespace GenAI.Server.Jinja
             environment.Set("list", FiltersBuilder.BuildList);
             environment.Set("namespace", FiltersBuilder.BuildNamespace);
             environment.Set("trim", FiltersBuilder.BuildTrim);
+            environment.Set("lower", FiltersBuilder.BuildToLower);
             environment.Set("length", FiltersBuilder.BuildLength);
             environment.Set("tojson", FiltersBuilder.BuildToJSON);
 
@@ -116,6 +117,18 @@ namespace GenAI.Server.Jinja
 
             return new StringValue(json);
         });
+
+        public static FunctionValue BuildToLower
+    => new FunctionValue((args, env) =>
+    {
+        if (args.Count != 1 || !(args[0] is StringValue))
+        {
+            throw new Exception("tolower() expects one string argument");
+        }
+
+        var str1 = (string)((StringValue)args[0]).Value;
+        return new StringValue(str1.ToLower());
+    });
 
         public static FunctionValue BuildTrim
     => new FunctionValue((args, env) =>

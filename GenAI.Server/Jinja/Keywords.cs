@@ -4,6 +4,7 @@
     {
         public static readonly Dictionary<string, string> Mapping = new()
         {
+        {"break", TokenTypes.Break },
         { "set", TokenTypes.Set },
         { "for", TokenTypes.For },
         { "in", TokenTypes.In },

@@ -45,5 +45,6 @@
         public const string Not = "Not";
         public const string Macro = "Macro";
         public const string EndMacro = "EndMacro";
+        public const string Break = "Break";
     }
 }

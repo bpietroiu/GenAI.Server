@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.ML.OnnxRuntimeGenAI;
 using System.Text.Json;
 using System.Reflection.Emit;
+//using Newtonsoft.Json;
 
 namespace GenAI.Server.Services
 {
@@ -92,6 +93,13 @@ namespace GenAI.Server.Services
                 //}
             };
 
+            if (request.Tools != null && request.Tools.Any())
+            {
+
+
+                context["tools"] = request.Tools.ToArray();
+
+            }
             List<object> messages = new List<object>();
             foreach (var message in request.Messages)
             {
@@ -168,6 +176,7 @@ namespace GenAI.Server.Services
             var model = runtimeModel.Model;
             var tokenizer = runtimeModel.Tokenizer;
 
+
             using var tokenizerStream = tokenizer.Tokenizer.CreateStream();
             using GeneratorParams generatorParams = new GeneratorParams(model);
             generatorParams.SetSearchOption("max_length", max_length);
@@ -179,8 +188,13 @@ namespace GenAI.Server.Services
 
             int generateTokenCount = 0;
             bool[] sequencesCompleted = new bool[inputs.NumSequences]; // Track which sequences have completed
+            bool[] toolCalls = new bool[inputs.NumSequences]; // Track which sequences have completed
             int eosTokenId = tokenizer.Tokenizer.Encode(tokenizer.Config.EosToken)[0][0];
             int padTokenId = tokenizer.Tokenizer.Encode(tokenizer.Config.PadToken)[0][0];
+
+            var toolCallStartTokenId = tokenizer.Tokenizer.Encode("<tool_call>")[0][0];
+            var toolCallEndTokenId = tokenizer.Tokenizer.Encode("</tool_call>")[0][0];
+
             //Console.WriteLine($"eosTokeId: {eosTokenId}");
             //Console.WriteLine($"padTokenId: {padTokenId}");
 
@@ -204,9 +218,12 @@ namespace GenAI.Server.Services
                     // Determine finish reason
                     FinishReason finishReason;
 
+                    if(token == toolCallStartTokenId)
+                        toolCalls[i] = true;
+
                     if (token == eosTokenId || token == padTokenId)
                     {
-                        finishReason = FinishReason.Stop;
+                        finishReason = toolCalls[i] ? FinishReason.FunctionCall : FinishReason.Stop;
                         sequencesCompleted[i] = true;
                     }
                     else if (seq.Length >= max_lengths[i])
@@ -261,7 +278,7 @@ namespace GenAI.Server.Services
                 }
                 else
                 {
-                    finishReason = FinishReason.Stop;
+                    finishReason = toolCalls[i] ? FinishReason.FunctionCall : FinishReason.Stop;
                     sequencesCompleted[i] = true;
                 }
 

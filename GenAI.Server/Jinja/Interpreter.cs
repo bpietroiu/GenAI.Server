@@ -140,10 +140,16 @@ namespace GenAI.Server.Jinja
                     }
                     break;
                 case "not":
-                    if (operand is BooleanValue booleanValue)
                     {
-                        return new BooleanValue(!(bool)booleanValue.Value);
+                        RuntimeValue value = operand;
+
+                        if (!(value is BooleanValue booleanValue))
+                            value = this.CoerceBooleanValue(operand);
+                        {
+                            return new BooleanValue(!(bool)value.Value);
+                        }
                     }
+                    
                     break;
             }
             throw new Exception($"Unknown unary operator: {unaryExpression.ToCode()}");
@@ -217,6 +223,11 @@ namespace GenAI.Server.Jinja
         private RuntimeValue EvaluateIf(IfStatement ifStatement, Environment env)
         {
             var testResult = Evaluate(ifStatement.Test, env);
+            if (!(testResult is BooleanValue))
+            {
+                testResult = CoerceBooleanValue(testResult);
+            }
+
             if (testResult is BooleanValue boolValue && (bool)boolValue.Value)
             {
                 return EvaluateBlock(ifStatement.Body, env);

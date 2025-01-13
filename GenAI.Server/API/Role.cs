@@ -9,6 +9,8 @@ namespace GenAI.Server.API
         [JsonPropertyName("user")]
         User,
         [JsonPropertyName("assistant")]
-        Assistant
+        Assistant,
+        [JsonPropertyName("tool")]
+        Tool = 4,
     }
 }

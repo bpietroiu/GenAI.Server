@@ -7,6 +7,7 @@ namespace GenAI.Server.Services
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Text.RegularExpressions;
     using System.Threading;
     using System.Threading.Channels;
     using System.Threading.Tasks;
@@ -216,7 +217,9 @@ namespace GenAI.Server.Services
                         Message = new Message
                         {
                             Role = Role.Assistant,
-                            Content = result.Output
+                            //Content = result.FinishReason == FinishReason.FunctionCall ? null : result.Output,
+                            Content = result.Output,
+                            ToolCalls = result.FinishReason != FinishReason.FunctionCall ? null : ParseToolCalls(result.Output)
                         },
                         FinishReason = result.FinishReason
                     }
@@ -242,6 +245,44 @@ namespace GenAI.Server.Services
                     request.TaskCompletionSource.SetException(ex);
                 }
             }
+        }
+
+        private List<FunctionContent> ParseToolCalls(string output)
+        {
+            // Define a regex to match the <tool_call> blocks
+            Regex regex = new Regex(@"<tool_call>\n?(?<json>{.*?})\n?</tool_call>", RegexOptions.Singleline);
+
+            var toolCalls = new List<FunctionContent>();
+
+            // Find all matches in the output
+            var matches = regex.Matches(output);
+
+            foreach (Match match in matches)
+            {
+                // Extract the JSON content
+                string json = match.Groups["json"].Value;
+
+                try
+                {
+                    string new_json = $@"{{""function"": {json}}}";
+                    // Deserialize the JSON into a FunctionContent object
+                    var toolCall = System.Text.Json.JsonSerializer.Deserialize<FunctionContent>(new_json);
+
+                    if (toolCall != null)
+                    {
+                        toolCalls.Add(toolCall);
+                    }
+                }
+                catch (System.Text.Json.JsonException ex)
+                {
+                    // Log or handle parsing errors
+                    Console.WriteLine($"Error parsing tool call: {json}\nException: {ex.Message}");
+                }
+            }
+
+            return toolCalls;
+
+
         }
     }
 

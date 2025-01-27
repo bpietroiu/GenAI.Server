@@ -202,9 +202,10 @@ namespace GenAI.Server.Services
 
                 int[] max_lengths = batch.Select(r=>r.Input.MaxTokens.Value).ToArray();
                 // Call the ONNX model for the specific batch
-                var predictions = _onnxModelRunner.RunAsync(key.model, maxLen.Value, key.temperature, inputStrings.ToArray(), max_lengths);  // Modify this method to use model and temperature
+                var predictions = _onnxModelRunner.RunAsync(key.model, maxLen.Value, key.temperature, 
+                    inputStrings.ToArray(), max_lengths);  // Modify this method to use model and temperature
 
-                await foreach (var result in predictions)
+                await foreach (var result in predictions.WithCancellation(cancellationToken))
                 {
                     var response = new ChatCompletionResponse
                     {
@@ -246,11 +247,11 @@ namespace GenAI.Server.Services
                 }
             }
         }
+        static Regex regex = new Regex(@"<tool_call>\n?(?<json>{.*?})\n?</tool_call>", RegexOptions.Singleline | RegexOptions.Compiled);
 
         private List<FunctionContent> ParseToolCalls(string output)
         {
             // Define a regex to match the <tool_call> blocks
-            Regex regex = new Regex(@"<tool_call>\n?(?<json>{.*?})\n?</tool_call>", RegexOptions.Singleline);
 
             var toolCalls = new List<FunctionContent>();
 

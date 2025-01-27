@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.ML.OnnxRuntimeGenAI;
 using System.Text.Json;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 //using Newtonsoft.Json;
 
 namespace GenAI.Server.Services
@@ -165,7 +166,9 @@ namespace GenAI.Server.Services
         public RuntimeModelCache Cache { get; }
         public ILogger<OnnxModelRunner> Logger { get; }
 
-        public async IAsyncEnumerable<RunResult> RunAsync(string modelName, int max_length, double temperature, string[] batch, int[] max_lengths)
+        public async IAsyncEnumerable<RunResult> RunAsync(string modelName, int max_length, 
+            double temperature, string[] batch, int[] max_lengths,
+            [EnumeratorCancellation] CancellationToken ct = default)
         {
             var runtimeModel = Cache.GetModel(modelName);
             if (runtimeModel == null)
@@ -183,8 +186,8 @@ namespace GenAI.Server.Services
             generatorParams.SetSearchOption("temperature", temperature);
             using var inputs = tokenizer.Tokenizer.EncodeBatch(batch);
 
-            generatorParams.SetInputSequences(inputs);
             using var generator = new Generator(model, generatorParams);
+            generator.AppendTokenSequences(inputs);
 
             int generateTokenCount = 0;
             bool[] sequencesCompleted = new bool[inputs.NumSequences]; // Track which sequences have completed
@@ -198,10 +201,11 @@ namespace GenAI.Server.Services
             //Console.WriteLine($"eosTokeId: {eosTokenId}");
             //Console.WriteLine($"padTokenId: {padTokenId}");
 
-            while (!generator.IsDone())
+            while (!generator.IsDone() )
             {
+                ct.ThrowIfCancellationRequested();
+
                 generateTokenCount++;
-                generator.ComputeLogits();
                 generator.GenerateNextToken();
 
 

@@ -109,8 +109,15 @@ namespace GenAI.Server.Jinja
                 writer.Indentation = indent; // Set the indentation to 6 spaces
 
                 var serializer = Newtonsoft.Json.JsonSerializer.Create(settings);
-                var dict = (IDictionary<string, RuntimeValue>)args[0].Value;
-                serializer.Serialize(writer, dict.ToDictionary(x => x.Key, x => x.Value.Value));
+                if (args[0].Value is IDictionary<string, RuntimeValue> dict)
+                {
+                    serializer.Serialize(writer, dict.ToDictionary(x => x.Key, x => x.Value.Value));
+                }
+                if (args[0].Value is ArrayValue rv)
+                {
+                    serializer.Serialize(writer, (rv.Value as Array));
+                }
+
             }
 
             string json = sb.ToString();

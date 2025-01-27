@@ -13,8 +13,8 @@ namespace GenAI.Server.Services
         [JsonPropertyName("pad_token")]
         public string PadToken { get; set; }
 
-        [JsonPropertyName("model_max_length")]
-        public int ModelMaxLength { get; set; }
+        //[JsonPropertyName("model_max_length")]
+        //public int? ModelMaxLength { get; set; }
 
 
         [JsonPropertyName("chat_template")]
